@@ -11,14 +11,15 @@ import Login from './components/Login';
 import TaskManager from './components/TaskManager';
 import { Influencer, Transaction, Delivery, Project, Task } from './types';
 import { Shield, LogOut, Loader2, Database } from 'lucide-react';
-import { INITIAL_INFLUENCERS, INITIAL_TRANSACTIONS, INITIAL_DELIVERIES } from './constants';
+import { db } from './lib/firebase';
+import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Local Data State
+  // Firestore Data State
   const [influencers, setInfluencers] = useState<Influencer[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
@@ -26,37 +27,47 @@ const App: React.FC = () => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [categories, setCategories] = useState<string[]>(['Other', 'Production', 'Commission', 'Ad Spend', 'Gift', 'Software']);
 
-  // Load Data from LocalStorage
+  // Load Data from Firebase
   useEffect(() => {
     const storedUser = localStorage.getItem('creatorflow_user');
     if (storedUser) setUser(JSON.parse(storedUser));
 
-    const loadLocal = (key: string, initial: any) => {
-      const data = localStorage.getItem(key);
-      return data ? JSON.parse(data) : initial;
-    };
+    setLoading(true);
 
-    setInfluencers(loadLocal('cf_influencers', INITIAL_INFLUENCERS));
-    setTransactions(loadLocal('cf_transactions', INITIAL_TRANSACTIONS));
-    setDeliveries(loadLocal('cf_deliveries', INITIAL_DELIVERIES));
-    setProjects(loadLocal('cf_projects', []));
-    setTasks(loadLocal('cf_tasks', []));
-    setCategories(loadLocal('cf_categories', ['Other', 'Production', 'Commission', 'Ad Spend', 'Gift', 'Software']));
+    const unsubscribers = [
+      onSnapshot(collection(db, 'influencers'), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Influencer));
+        setInfluencers(data);
+      }),
+      onSnapshot(collection(db, 'transactions'), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
+        setTransactions(data);
+      }),
+      onSnapshot(collection(db, 'deliveries'), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Delivery));
+        setDeliveries(data);
+      }),
+      onSnapshot(collection(db, 'projects'), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+        setProjects(data);
+      }),
+      onSnapshot(collection(db, 'tasks'), (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Task));
+        setTasks(data);
+      }),
+      onSnapshot(collection(db, 'categories'), (snapshot) => {
+        const data = snapshot.docs.map(doc => doc.data().name);
+        if (data.length > 0) {
+            setCategories(data);
+        }
+      }),
+    ];
 
     setLoading(false);
+
+    return () => unsubscribers.forEach(unsub => unsub());
   }, []);
 
-  // Persistence Helpers
-  useEffect(() => {
-    if (!loading) {
-      localStorage.setItem('cf_influencers', JSON.stringify(influencers));
-      localStorage.setItem('cf_transactions', JSON.stringify(transactions));
-      localStorage.setItem('cf_deliveries', JSON.stringify(deliveries));
-      localStorage.setItem('cf_projects', JSON.stringify(projects));
-      localStorage.setItem('cf_tasks', JSON.stringify(tasks));
-      localStorage.setItem('cf_categories', JSON.stringify(categories));
-    }
-  }, [influencers, transactions, deliveries, projects, tasks, categories, loading]);
 
   const handleLogout = () => {
     localStorage.removeItem('creatorflow_user');
@@ -68,21 +79,140 @@ const App: React.FC = () => {
     setUser(userData);
   };
 
-  const handleAddInfluencer = (inf: Influencer) => setInfluencers(prev => [...prev, inf]);
-  const handleUpdateInfluencer = (updated: Influencer) => setInfluencers(prev => prev.map(i => i.id === updated.id ? updated : i));
-  const handleDeleteInfluencer = (id: string) => setInfluencers(prev => prev.filter(i => i.id !== id));
+  const handleAddInfluencer = async (inf: Omit<Influencer, 'id'>) => {
+    try {
+      await addDoc(collection(db, 'influencers'), inf);
+    } catch (error) {
+      console.error("Error adding influencer: ", error);
+    }
+  };
+  const handleUpdateInfluencer = async (updated: Influencer) => {
+    try {
+      const docRef = doc(db, 'influencers', updated.id);
+      await updateDoc(docRef, updated as any);
+    } catch (error) {
+      console.error("Error updating influencer: ", error);
+    }
+  };
+  const handleDeleteInfluencer = async (id: string) => {
+    try {
+      const docRef = doc(db, 'influencers', id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error("Error deleting influencer: ", error);
+    }
+  };
 
-  const handleAddDelivery = (del: Delivery) => setDeliveries(prev => [...prev, del]);
-  const handleUpdateDelivery = (updated: Delivery) => setDeliveries(prev => prev.map(d => d.id === updated.id ? updated : d));
-  const handleDeleteDelivery = (id: string) => setDeliveries(prev => prev.filter(d => d.id !== id));
+  const handleAddDelivery = async (del: Omit<Delivery, 'id'>) => {
+    try {
+      await addDoc(collection(db, 'deliveries'), del);
+    } catch (error) {
+      console.error("Error adding delivery: ", error);
+    }
+  };
+  const handleUpdateDelivery = async (updated: Delivery) => {
+    try {
+      const docRef = doc(db, 'deliveries', updated.id);
+      await updateDoc(docRef, updated as any);
+    } catch (error) {
+      console.error("Error updating delivery: ", error);
+    }
+  };
+  const handleDeleteDelivery = async (id: string) => {
+    try {
+      const docRef = doc(db, 'deliveries', id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error("Error deleting delivery: ", error);
+    }
+  };
 
   const handleBulkUpdateDeliveries = async (ids: string[], updates: Partial<Delivery>) => {
-    setDeliveries(prev => prev.map(d => ids.includes(d.id) ? { ...d, ...updates } : d));
+    try {
+      const batch = writeBatch(db);
+      ids.forEach(id => {
+        const docRef = doc(db, 'deliveries', id);
+        batch.update(docRef, updates);
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error("Error bulk updating deliveries: ", error);
+    }
   };
 
   const handleBulkDeleteDeliveries = async (ids: string[]) => {
-    setDeliveries(prev => prev.filter(d => !ids.includes(d.id)));
+    try {
+      const batch = writeBatch(db);
+      ids.forEach(id => {
+        const docRef = doc(db, 'deliveries', id);
+        batch.delete(docRef);
+      });
+      await batch.commit();
+    } catch (error) {
+      console.error("Error bulk deleting deliveries: ", error);
+    }
   };
+
+  const handleAddProject = async (project: Omit<Project, 'id'>) => {
+    try {
+      await addDoc(collection(db, 'projects'), project);
+    } catch (error) {
+      console.error("Error adding project: ", error);
+    }
+  };
+
+  const handleUpdateProject = async (updated: Project) => {
+    try {
+      const docRef = doc(db, 'projects', updated.id);
+      await updateDoc(docRef, updated as any);
+    } catch (error) {
+      console.error("Error updating project: ", error);
+    }
+  };
+
+  const handleDeleteProject = async (id: string) => {
+    try {
+      const docRef = doc(db, 'projects', id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error("Error deleting project: ", error);
+    }
+  };
+
+  const handleAddCategory = async (category: string) => {
+    try {
+      await addDoc(collection(db, 'categories'), { name: category });
+    } catch (error) {
+      console.error("Error adding category: ", error);
+    }
+  };
+
+  const handleAddTask = async (task: Omit<Task, 'id'>) => {
+    try {
+      await addDoc(collection(db, 'tasks'), task);
+    } catch (error) {
+      console.error("Error adding task: ", error);
+    }
+  };
+
+  const handleUpdateTask = async (updated: Task) => {
+    try {
+      const docRef = doc(db, 'tasks', updated.id);
+      await updateDoc(docRef, updated as any);
+    } catch (error) {
+      console.error("Error updating task: ", error);
+    }
+  };
+
+  const handleDeleteTask = async (id: string) => {
+    try {
+      const docRef = doc(db, 'tasks', id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      console.error("Error deleting task: ", error);
+    }
+  };
+
 
   const renderContent = () => {
     switch (activeTab) {
@@ -114,13 +244,20 @@ const App: React.FC = () => {
         return (
           <ExpenseFlow 
             projects={projects} 
-            setProjects={setProjects} 
+            onAddProject={handleAddProject}
+            onUpdateProject={handleUpdateProject}
+            onDeleteProject={handleDeleteProject}
             categories={categories} 
-            setCategories={setCategories} 
+            onAddCategory={handleAddCategory} 
           />
         );
       case 'tasks':
-        return <TaskManager tasks={tasks} setTasks={setTasks} />;
+        return <TaskManager 
+                    tasks={tasks} 
+                    onAddTask={handleAddTask}
+                    onUpdateTask={handleUpdateTask}
+                    onDeleteTask={handleDeleteTask}
+                />;
       case 'reports':
         return <Reports influencers={influencers} deliveries={deliveries} projects={projects} transactions={transactions} />;
       default:
@@ -132,7 +269,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center space-y-4">
         <Loader2 className="w-10 h-10 text-cyan-400 animate-spin" />
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Initializing Local Memory...</p>
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Connecting to Firebase...</p>
       </div>
     );
   }
@@ -147,7 +284,7 @@ const App: React.FC = () => {
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center space-x-2 text-[10px] font-black uppercase tracking-widest text-cyan-500">
             <Database size={10} />
-            <span>Local Storage Active</span>
+            <span>Firebase Connected</span>
             <span className="text-slate-700 ml-2">SESSION: {user.email}</span>
           </div>
           <button 
